@@ -4,14 +4,7 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 
 # Homework 2 {-}
 
-<center>
-**Due Thursday, September 30 at 11:59pm CST on [Moodle](https://moodle.macalester.edu/mod/assign/view.php?id=27980)**
-</center>
-
-**Deliverables:** Please use [this template](template_rmds/hw2.Rmd) to knit an HTML document. Convert this HTML document to a PDF by opening the HTML document in your web browser. *Print* the document (Ctrl/Cmd-P) and change the destination to "Save as PDF". Submit this one PDF to Moodle.
-
-Alternatively, you may knit your Rmd directly to PDF if you have LaTeX installed.
-
+Jeremy Hubinger, and Tamur Asar
 
 
 <br><br><br>
@@ -70,7 +63,8 @@ fires <- read_csv("forestfires.csv")
 ```{r}
 # data cleaning
 fires <- fires %>%
-    select(-X, -Y, -day)
+    select(-X, -Y, -day) %>%
+    filter(month != "nov")
 ```
 
 ```{r}
@@ -88,7 +82,7 @@ lm_spec <-
 
 lm_lasso_spec <- 
   linear_reg() %>%
-  set_args(mixture = 1, penalty = tune()) %>%
+  set_args(mixture = 1, penalty = 3.162278) %>%
   set_engine(engine = 'glmnet') %>%
   set_mode('regression') 
 ```
@@ -109,24 +103,6 @@ lasso_wf_tune <- workflow() %>%
   add_model(lm_lasso_spec) 
 ```
 
-```{r}
-# autoplot(tune_output) + theme_classic()
-# 
-# collect_metrics(tune_output) %>%
-#   filter(.metric == 'rmse') %>% # or choose mae
-#   select(penalty, rmse = mean) 
-# 
-# best_penalty <- select_best(tune_output, metric = 'rmse')
-# 
-# best_penalty
-# 
-# final_wf <- finalize_workflow(lasso_wf_tune, best_penalty)
-# 
-# final_fit <- fit(final_wf, data = fires)
-# 
-# tidy(final_fit)
-```
-
 
 ```{r}
 # fit & tune models
@@ -135,10 +111,12 @@ full_lm_wf <- workflow() %>%
     add_model(lm_spec)
     
 full_model <- fit(full_lm_wf, data = fires) 
+```
 
+```{r eval=FALSE}
 # Tune Model (trying a variety of values of Lambda penalty)
 penalty_grid <- grid_regular(
-  penalty(range = c(-5, 3)), #log10 transformed 
+  penalty(range = c(-3, 0.5)), #log10 transformed 
   levels = 30)
 
 tune_output <- tune_grid( # new function for tuning parameters
@@ -149,6 +127,23 @@ tune_output <- tune_grid( # new function for tuning parameters
 )
 ```
 
+```{r}
+ autoplot(tune_output) + theme_classic()
+
+ collect_metrics(tune_output) %>%
+   filter(.metric == 'rmse') %>% # or choose mae
+   select(penalty, rmse = mean)
+
+ best_penalty <- select_best(tune_output, metric = 'rmse')
+
+best_penalty
+
+final_wf <- finalize_workflow(lasso_wf_tune, best_penalty)
+
+final_fit <- fit(final_wf, data = fires)
+
+tidy(final_fit)
+```
 c.
 
 ```{r}
@@ -157,9 +152,9 @@ full_model %>% tidy()
 
 collect_metrics(tune_output) %>%
   filter(.metric == 'rmse') %>%
-  select(penalty, rmse = mean) 
+  select(penalty, rmse = mean)
 
-best_penalty <- select_best(tune_output, metric = 'rmse')
+best_penalty <- select_by_one_std_err(tune_output, metric = 'rmse', desc(penalty))
 
 final_wf <- finalize_workflow(lasso_wf_tune, best_penalty)
 
@@ -179,6 +174,38 @@ lasso_mod_out <- final_fit %>%
     predict(new_data = fires) %>%
     bind_cols(fires) %>%
     mutate(resid = area - .pred)
+
+lm_mod_out <- full_model %>%
+    predict(new_data = fires) %>%
+    bind_cols(fires) %>%
+    mutate(resid = area - .pred)
+
+ggplot(lm_mod_out, aes(x = temp, y = resid)) +
+    geom_point() +
+    geom_smooth() +
+    geom_hline(yintercept = 0, color = "red") +
+    theme_classic() +
+    ylim(-50,150)
+
+ggplot(lasso_mod_out, aes(x = temp, y = resid)) +
+    geom_point() +
+    geom_smooth() +
+    geom_hline(yintercept = 0, color = "red") +
+    theme_classic() +
+    ylim(-50,150)
+
+ggplot(lm_mod_out, aes(x = temp, y = resid)) +
+    geom_point() +
+    geom_smooth() +
+    geom_hline(yintercept = 0, color = "red") +
+    theme_classic()
+
+ggplot(lasso_mod_out, aes(x = temp, y = resid)) +
+    geom_point() +
+    geom_smooth() +
+    geom_hline(yintercept = 0, color = "red") +
+    theme_classic()
+
 ```
 
 e.
@@ -187,7 +214,7 @@ e.
 
 2. **Summarize investigations**
     - Decide on an overall best model based on your investigations so far. To do this, make clear your analysis goals. Predictive accuracy? Interpretability? A combination of both?
-
+  A mix of interpretability and predictive accuracy is best. The interpradability of our model is important because if someone actually wants to predict a fire using our model, they should only have to take and interpret the measurements that matter the most. The predicive power of the model obviously should not be significantly sacrificed for this goal because predicting fires is the outcome that matters. Taking both of these factors into account, we belive that the LASSO model is far superior to the LM model, because the LASSO model only has 3 relevant predictors and its residual bound is much tighter, especially within the negative residuals, which means that in the LM model there were significantly more false positivies. When false positivies did occur, the LASSO model predicted much smaller fires than the LM model. However, both models were not very good at predicting large fires.
 
 
 <br>
@@ -195,77 +222,4 @@ e.
 3. **Societal impact**
     - Are there any harms that may come from your analyses and/or how the data were collected?
     - What cautions do you want to keep in mind when communicating your work?
-
-
-
-<br><br><br>
-
-
-
-## Portfolio Work {-}
-
-**Length requirements:** Detailed for each section below.
-
-**Organization:** To help the instructor and preceptors grade, please organize your document with clear section headers and start new pages for each method. Thank you!
-
-**Deliverables:** Continue writing your responses in the same Google Doc that you set up for Homework 1. Include that URL for the Google Doc in your submission.
-
-**Note:** Some prompts below may seem very open-ended. This is intentional. Crafting good responses requires looking back through our material to organize the concepts in a coherent, thematic way, which is extremely useful for your learning.
-
-<br>
-
-**Revisions:**
-
-- Make any revisions desired to previous concepts. **Important note:** When making revisions, please change from "editing" to "suggesting" so that we can easily see what you've added to the document since we gave feedback (we will "accept" the changes when we give feedback). If you don't do this, we won't know to reread that section and give new feedback.
-
-- General guideance for past homeworks will be available on Moodle (under the Solutions section). Look at these to guide your revisions. You can always ask for guidance in office hours as well.
-
-<br>
-
-**New concepts to address:**
-
-- **Subset selection:**
-    - Algorithmic understanding: Look at Conceptual exercise 1, parts (a) and (b) in ISLR Section 6.8. **What are the aspects of the subset selection algorithm(s) that are essential to answering these questions, and why?** (Note: you'll have to try to answer the ISLR questions to respond to this prompt, but the focus of your writing should be on the question in bold here.)
-    - Bias-variance tradeoff: What "tuning parameters" control the performance of this method? How do low/high values of the tuning parameters relate to bias and variance of the learned model? (3 sentences max.)
-    - Parametric / nonparametric:  Where (roughly) does this method fall on the parametric-nonparametric spectrum, and why? (3 sentences max.)
-    - Scaling of variables: Does the scale on which variables are measured matter for the performance of this algorithm? Why or why not? If scale does matter, how should this be addressed when using this method? (3 sentences max.)
-    - Computational time: What computational time considerations are relevant for this method (how long the algorithms take to run)?
-    - Interpretation of output: What parts of the algorithm output have useful interpretations, and what are those interpretations? **Focus on output that allows us to measure variable importance. How do the algorithms/output allow us to learn about variable importance?**
-
-- **LASSO:**
-    - Algorithmic understanding: Come up with your own analogy for explaining how the penalized least squares criterion works.
-    - Bias-variance tradeoff: What tuning parameters control the performance of this method? How do low/high values of the tuning parameters relate to bias and variance of the learned model? (3 sentences max.)
-    - Parametric / nonparametric: Where (roughly) does this method fall on the parametric-nonparametric spectrum, and why? (3 sentences max.)
-    - Scaling of variables: Does the scale on which variables are measured matter for the performance of this algorithm? Why or why not? If scale does matter, how should this be addressed when using this method? (3 sentences max.)
-    - Computational time: What computational time considerations are relevant for this method (how long the algorithms take to run)?
-    - Interpretation of output: What parts of the algorithm output have useful interpretations, and what are those interpretations? **Focus on output that allows us to measure variable importance. How do the algorithms/output allow us to learn about variable importance?**
-
-
-- **KNN:**
-    - Algorithmic understanding: Draw and annotate pictures that show how the KNN (K = 2) regression algorithm would work for a test case in a 2 quantitative predictor setting. Also explain how the curse of dimensionality affects KNN performance. (5 sentences max.)
-    - Bias-variance tradeoff: What tuning parameters control the performance of this method? How do low/high values of the tuning parameters relate to bias and variance of the learned model? (3 sentences max.)
-    - Parametric / nonparametric: Where (roughly) does this method fall on the parametric-nonparametric spectrum, and why? (3 sentences max.)
-    - Scaling of variables: Does the scale on which variables are measured matter for the performance of this algorithm? Why or why not? If scale does matter, how should this be addressed when using this method? (3 sentences max.)
-    - Computational time: The KNN algorithm is often called a "lazy" learner. Discuss how this relates to the model training process and the computations that must be performed when predicting on a new test case. (3 sentences max.)
-    - Interpretation of output: The "lazy" learner feature of KNN in relation to model training affects the interpretability of output. How? (3 sentences max.)
-
-<br><br><br>
-
-
-
-## Reflection {-}
-
-**Ethics: ** Read the article [Automated background checks are deciding who's fit for a home](https://www.theverge.com/platform/amp/2019/2/1/18205174/automation-background-check-criminal-records-corelogic). Write a short (roughly 250 words), thoughtful response about the ideas that the article brings forth. What themes recur from last week's article (on an old Amazon recruiting tool) or movie (Coded Bias)? What aspects are more particular to the context of equity in housing access?
-
-
-**Reflection:** Write a short, thoughtful reflection about how things went this week. Feel free to use whichever prompts below resonate most with you, but don't feel limited to these prompts.
-
-- How are class-related things going? Is there anything that you need from the instructor? What new strategies for watching videos, reading, reviewing, gaining insights from class work have you tried or would like to try?
-- How is group work going? Did you try out any new collaboration strategies with your new group? How did they go?
-- How is your work/life balance going? Did you try out any new activities or strategies for staying well? How did they go?
-
-
-**Self-Assessment:** Before turning in this assignment on Moodle, go to the individual rubric shared with you and complete the self-assessment for the general skills (top section). After "HW2:", assess yourself on each of the general skills. Do feel like you've grown in a particular area since HW1?
-
-Assessing yourself is hard. We must practice this skill. These "grades" you give yourself are intended to have you stop and think about your learning as you grow and develop the general skills and deepen your understanding of the course topics. These grades do not map directly to a final grade. 
-
+  If these models are taken to be accurate, there could be real harms that occur. Specifically, that our models do not predict big fires very well at all. That is the take away that should be taken from this analysis, that big fires are very unpredictable.
