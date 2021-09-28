@@ -64,7 +64,7 @@ library(dplyr)
 library(tidymodels)
 tidymodels_prefer()
 
-fires <- read_csv("/Users/tamurasar/Programing/STAT253/forestfires.csv")
+fires <- read_csv("forestfires.csv")
 ```
 
 ```{r}
@@ -88,7 +88,7 @@ lm_spec <-
 
 lm_lasso_spec <- 
   linear_reg() %>%
-  set_args(mixture = 1, penalty = t) %>%
+  set_args(mixture = 1, penalty = tune()) %>%
   set_engine(engine = 'glmnet') %>%
   set_mode('regression') 
 ```
