@@ -75,11 +75,13 @@ fires_cv10 <- vfold_cv(fires, v = 10)
 
 ```{r}
 # model spec
+# this first one is a normal lm regression without using LASSO for comparison purposes
 lm_spec <-
     linear_reg() %>% 
     set_engine(engine = 'lm') %>% 
     set_mode('regression')
 
+# this is the LASSO model
 lm_lasso_spec <- 
   linear_reg() %>%
   set_args(mixture = 1, penalty = 3.162278) %>%
@@ -127,7 +129,7 @@ tune_output <- tune_grid( # new function for tuning parameters
 )
 ```
 
-```{r}
+```{r eval=FALSE}
  autoplot(tune_output) + theme_classic()
 
  collect_metrics(tune_output) %>%
@@ -137,6 +139,8 @@ tune_output <- tune_grid( # new function for tuning parameters
  best_penalty <- select_best(tune_output, metric = 'rmse')
 
 best_penalty
+
+# the best penalty is 3.162278
 
 final_wf <- finalize_workflow(lasso_wf_tune, best_penalty)
 
