@@ -73,9 +73,10 @@ set.seed(88)
 fires_cv10 <- vfold_cv(fires, v = 10)
 ```
 
+We now fit multiple types of models. One model is fit using simple LM regression with all predictors. The second model is fit using LASSO regression to attempt to provide some amount of filtering to the model predictors. Both models are fit and compared later on.
+
 ```{r}
 # model spec
-# this first one is a normal lm regression without using LASSO for comparison purposes
 lm_spec <-
     linear_reg() %>% 
     set_engine(engine = 'lm') %>% 
@@ -84,13 +85,14 @@ lm_spec <-
 # this is the LASSO model
 lm_lasso_spec <- 
   linear_reg() %>%
-  set_args(mixture = 1, penalty = 3.162278) %>%
+  set_args(mixture = 1, penalty = tune()) %>%
   set_engine(engine = 'glmnet') %>%
   set_mode('regression') 
 ```
 
 ```{r}
 # recipes & workflows
+# both models are fit with the same recipe because they both start with all predictors and all predictors are normalized
 full_rec <- recipe(area ~ ., data = fires) %>%
     step_nzv(all_predictors()) %>% # removes variables with the same value
     step_normalize(all_numeric_predictors()) %>% # important standardization step for LASSO
@@ -105,7 +107,6 @@ lasso_wf_tune <- workflow() %>%
   add_model(lm_lasso_spec) 
 ```
 
-
 ```{r}
 # fit & tune models
 full_lm_wf <- workflow() %>%
@@ -115,7 +116,7 @@ full_lm_wf <- workflow() %>%
 full_model <- fit(full_lm_wf, data = fires) 
 ```
 
-```{r eval=FALSE}
+```{r}
 # Tune Model (trying a variety of values of Lambda penalty)
 penalty_grid <- grid_regular(
   penalty(range = c(-3, 0.5)), #log10 transformed 
@@ -129,7 +130,7 @@ tune_output <- tune_grid( # new function for tuning parameters
 )
 ```
 
-```{r eval=FALSE}
+```{r}
  autoplot(tune_output) + theme_classic()
 
  collect_metrics(tune_output) %>%
@@ -140,7 +141,7 @@ tune_output <- tune_grid( # new function for tuning parameters
 
 best_penalty
 
-# the best penalty is 3.162278
+# the best penalty within the range is 3.162278
 
 final_wf <- finalize_workflow(lasso_wf_tune, best_penalty)
 
@@ -152,11 +153,8 @@ c.
 
 ```{r}
 #  calculate/collect CV metrics
-full_model %>% tidy()
 
-collect_metrics(tune_output) %>%
-  filter(.metric == 'rmse') %>%
-  select(penalty, rmse = mean)
+full_model %>% tidy()
 
 best_penalty <- select_by_one_std_err(tune_output, metric = 'rmse', desc(penalty))
 
@@ -166,7 +164,24 @@ final_fit <- fit(final_wf, data = fires)
 
 tidy(final_fit)
 ```
+Based on the above information, using the LASSO model to tell what variables are the most important, we can see that temperature is the most important variable and that most others are at or close to zero. This is much more readable than the LM model which has a lot of importance on a lot of different variables which don't seem to matter, and actually hurt the model's performance on test data.
 
+```{r}
+LASSO_model_cv <- fit_resamples(final_fit,
+  resamples = fires_cv10, 
+  metrics = metric_set(rmse, rsq, mae)
+)
+
+LASSO_model_cv %>% collect_metrics(summarize=TRUE)
+
+LM_model_cv <- fit_resamples(full_model,
+  resamples = fires_cv10, 
+  metrics = metric_set(rmse, rsq, mae)
+)
+
+LM_model_cv %>% collect_metrics(summarize=TRUE)
+```
+As we can see in the metrics above, the normal LM model with all the variables performs worse than the LASSO model which is much simpler. Because of the better performance (likely due to overfitting in the LM model's case) and simpler model coefficients we prefer the LASSO model.
  
 d.
 
@@ -189,30 +204,37 @@ ggplot(lm_mod_out, aes(x = temp, y = resid)) +
     geom_smooth() +
     geom_hline(yintercept = 0, color = "red") +
     theme_classic() +
-    ylim(-50,150)
+    ylim(-50,150) +
+    ggtitle("LM model residual plot")
 
 ggplot(lasso_mod_out, aes(x = temp, y = resid)) +
     geom_point() +
     geom_smooth() +
     geom_hline(yintercept = 0, color = "red") +
     theme_classic() +
-    ylim(-50,150)
+    ylim(-50,150) +
+    ggtitle("LM model residual plot")
 
 ggplot(lm_mod_out, aes(x = temp, y = resid)) +
     geom_point() +
     geom_smooth() +
     geom_hline(yintercept = 0, color = "red") +
-    theme_classic()
+    theme_classic() +
+    ggtitle("LASSO model residual plot")
 
 ggplot(lasso_mod_out, aes(x = temp, y = resid)) +
     geom_point() +
     geom_smooth() +
     geom_hline(yintercept = 0, color = "red") +
-    theme_classic()
+    theme_classic() +
+    ggtitle("LASSO model residual plot")
 
 ```
+The residual plots above confirm that the LASSO model is a better predictor. As we can see, the resuiduals for the lASSO model are tighter to the y axis when comapred to the LM model.
 
 e.
+
+As mentioned earlier, the variable with the most imporatnce seems to be temperature, which makes sense. We can see this by looking at the coeffecicents of the better LASSO model. There are some other predictors, like a lot of fires seemed to happen in september, but those other predictors are much less impactful on the model's predition when compared to temperature.
 
 <br>
 
