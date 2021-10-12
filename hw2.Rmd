@@ -1,5 +1,5 @@
 ```{r hw2_setup, include=FALSE}
-knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
+knitr::opts_chunk$set(echo=TRUE, eval=TRUE)
 ```
 
 # Homework 2 {-}
@@ -60,11 +60,14 @@ tidymodels_prefer()
 fires <- read_csv("forestfires.csv")
 ```
 
+The dataset has a variety of variables that might impact the strength and likelihood of fires. These variables include mainly things about weather, like temperature, pressure, wind, rain, ect. The variable we are trying to predict is "area" which is the area burned by fires on that day.
+
 ```{r}
 # data cleaning
 fires <- fires %>%
-    select(-X, -Y, -day) %>%
-    filter(month != "nov")
+    # we get rid of x and y because those are not relevant to the predictino of fire (they are the coordinates of the fires within the dataset)
+    # we get rid of day and month because there isnt a huge reason that they should impact the fires, we are more interested in how weather factors impact fires, not day of the week or month
+    select(-X, -Y, -day, -month)
 ```
 
 ```{r}
@@ -87,7 +90,7 @@ lm_lasso_spec <-
   linear_reg() %>%
   set_args(mixture = 1, penalty = tune()) %>%
   set_engine(engine = 'glmnet') %>%
-  set_mode('regression') 
+  set_mode('regression')
 ```
 
 ```{r}
@@ -149,6 +152,8 @@ final_fit <- fit(final_wf, data = fires)
 
 tidy(final_fit)
 ```
+It seems as though the only things that matter in the model aer DMC, RH, and Temp. Temp being the main factor, as that coefficient is about 5x larger than the other two.
+
 c.
 
 ```{r}
@@ -236,7 +241,70 @@ e.
 
 As mentioned earlier, the variable with the most imporatnce seems to be temperature, which makes sense. We can see this by looking at the coeffecicents of the better LASSO model. There are some other predictors, like a lot of fires seemed to happen in september, but those other predictors are much less impactful on the model's predition when compared to temperature.
 
+<br>  
+
+Part 2:
+
+```{r}
+# Natural Spline Recipe
+ns2_rec <- full_rec %>%
+  step_ns(temp, deg_free = 3) %>%
+  step_ns(RH, deg_free = 3) %>%
+  step_ns(DMC, deg_free = 3) %>%
+  step_ns(FFMC, deg_free = 3) %>%
+  step_ns(DC, deg_free = 3) %>%
+  step_ns(ISI, deg_free = 3) %>%
+  step_ns(wind, deg_free = 3) # natural cubic spline (higher deg_free means more knots)
+
+# Workflow (Recipe + Model)
+wf <- workflow() %>%
+    add_recipe(ns2_rec) %>%
+    add_model(lm_spec)
+
+# CV to Evaluate
+cv_output <- fit_resamples(
+  wf, # workflow
+  resamples = fires_cv10, # cv folds
+  metrics = metric_set(rsq, mae, rmse)
+)
+```
+
+```{r}
+# Fit with all data
+ns_mod <- fit(
+  wf, #workflow
+  data = fires
+)
+
+ns_mod_output <- fires %>%
+  bind_cols(predict(ns_mod, new_data = fires)) %>%
+    mutate(resid = area - .pred)
+```
+
+```{r}
+cv_output %>% collect_metrics(summarize = TRUE)
+LM_model_cv %>% collect_metrics(summarize=TRUE)
+LASSO_model_cv %>% collect_metrics(summarize=TRUE)
+```
+
+
 <br>
+  
+HW 3 discussion:
+
+2. **Summarize investigations**
+    - Decide on an overall best model based on your investigations so far. To do this, make clear your analysis goals. Predictive accuracy? Interpretability? A combination of both?
+    
+
+<br>
+
+3. **Societal impact**
+    - Are there any harms that may come from your analyses and/or how the data
+    
+
+<br>
+
+HW 2 discussion:
 
 2. **Summarize investigations**
     - Decide on an overall best model based on your investigations so far. To do this, make clear your analysis goals. Predictive accuracy? Interpretability? A combination of both?
@@ -250,14 +318,14 @@ As mentioned earlier, the variable with the most imporatnce seems to be temperat
     - What cautions do you want to keep in mind when communicating your work?
   If these models are taken to be accurate, there could be real harms that occur. Specifically, that our models do not predict big fires very well at all. That is the take away that should be taken from this analysis, that big fires are very unpredictable.
   Another possible harm is if the area variable is interpreted as pure area, without consideration for the transformation that occurred prior to analysis. The area was transformed with an ln(x+1) function. Therefore, all predictions should be interpreted through the inverse of this transform to be interpreted in any meaningful way.
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
+    
+    
+    
+    
+    
+    
+    
+
+
+
+
