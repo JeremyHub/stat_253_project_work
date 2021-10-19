@@ -289,22 +289,6 @@ LASSO_model_cv %>% collect_metrics(summarize=TRUE)
 
 
 <br>
-  
-HW 3 discussion:
-
-2. **Summarize investigations**
-    - Decide on an overall best model based on your investigations so far. To do this, make clear your analysis goals. Predictive accuracy? Interpretability? A combination of both?
-    
-
-<br>
-
-3. **Societal impact**
-    - Are there any harms that may come from your analyses and/or how the data
-    
-
-<br>
-
-HW 2 discussion:
 
 2. **Summarize investigations**
     - Decide on an overall best model based on your investigations so far. To do this, make clear your analysis goals. Predictive accuracy? Interpretability? A combination of both?
