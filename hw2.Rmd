@@ -261,13 +261,39 @@ ns_mod <- fit(
 ns_mod_output <- fires %>%
   bind_cols(predict(ns_mod, new_data = fires)) %>%
     mutate(resid = area - .pred)
+
+ggplot(ns_mod_output, aes(y=resid,x=temp)) +
+    geom_point() +
+    geom_smooth(color = "blue", se = FALSE) +
+    geom_hline(yintercept = 0, color = "red") +
+    theme_classic()
+
+ggplot(ns_mod_output, aes(y=resid,x=DMC)) +
+    geom_point() +
+    geom_smooth(color = "blue", se = FALSE) +
+    geom_hline(yintercept = 0, color = "red") +
+    theme_classic()
+
+ggplot(ns_mod_output, aes(y=resid,x=RH)) +
+    geom_point() +
+    geom_smooth(color = "blue", se = FALSE) +
+    geom_hline(yintercept = 0, color = "red") +
+    theme_classic()
+
+ggplot(ns_mod_output, aes(y=resid,x=wind)) +
+    geom_point() +
+    geom_smooth(color = "blue", se = FALSE) +
+    geom_hline(yintercept = 0, color = "red") +
+    theme_classic()
 ```
 
 ```{r}
-cv_output %>% collect_metrics(summarize = TRUE)
+cv_output %>% collect_metrics(summarize = TRUE) # splines
 LM_model_cv %>% collect_metrics(summarize=TRUE)
 LASSO_model_cv %>% collect_metrics(summarize=TRUE)
 ```
+Above we can see that the splines did not improve our model that much. This can be largely explained by the lack of non-linearity in our predictors (as we can see in the plots above), as well as the general overall un-importance of our predictors (as we can see the LASSO model with all coefficients at 0 still performs the best).
+
 
 GAM WITH SPLINES
 ```{r}
@@ -288,14 +314,13 @@ gam_mod %>% pluck('fit') %>% mgcv::gam.check()
 ```
 
 ```{r}
+gam_mod %>% pluck('fit') %>% summary() 
+```
+In the above table you can see that the r-squared is 0.2 and that the model only explains 5.3% of the variance in the outcome. This is quite bad and again comes down to the lack of non-linearity in the data (which can also be observed below) and the overall lack of variable importance for any variable in the dataset.
+
+```{r}
 gam_mod %>% pluck('fit') %>% plot( all.terms = TRUE, pages = 1)
 ```
-
-How does test performance of the GAM compare to other models you explored?
-
-
-Do you gain any insights from the GAM output plots for each predictor?
-
 
 <br>
 
