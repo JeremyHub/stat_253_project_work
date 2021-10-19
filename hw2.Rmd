@@ -65,8 +65,7 @@ The dataset has a variety of variables that might impact the strength and likeli
 ```{r}
 # data cleaning
 fires <- fires %>%
-    # we get rid of x and y because those are not relevant to the predictino of fire (they are the coordinates of the fires within the dataset)
-    # we get rid of day and month because there isnt a huge reason that they should impact the fires, we are more interested in how weather factors impact fires, not day of the week or month
+    # we get rid of day because there isnt a huge reason that it should impact the fires, we are more interested in how weather factors impact fires, not day of the week
     select(-day) %>%
    filter(area > 0) %>%
     mutate(area = log(area+.1))
@@ -152,7 +151,7 @@ final_fit <- fit(final_wf, data = fires)
 
 tidy(final_fit)
 ```
-It seems as though the only things that matter in the model aer DMC, RH, and Temp. Temp being the main factor, as that coefficient is about 5x larger than the other two.
+It seems as though all variables were set to 0 with LASSO. This is very interesting because it indicates that none of the variables make a significant effect in the predictive power of the model.
 
 c.
 
@@ -169,7 +168,7 @@ final_fit <- fit(final_wf, data = fires)
 
 tidy(final_fit)
 ```
-Based on the above information, using the LASSO model to tell what variables are the most important, we can see that temperature is the most important variable and that most others are at or close to zero. This is much more readable than the LM model which has a lot of importance on a lot of different variables which don't seem to matter, and actually hurt the model's performance on test data.
+Based on the above information, using the LASSO model to tell what variables are the most important (which is none). This is much more readable than the LM model which has a lot of importance on a lot of different variables which don't seem to matter, and actually hurt the model's performance on test data.
 
 ```{r}
 LASSO_model_cv <- fit_resamples(final_fit,
@@ -186,7 +185,7 @@ LM_model_cv <- fit_resamples(full_model,
 
 LM_model_cv %>% collect_metrics(summarize=TRUE)
 ```
-As we can see in the metrics above, the normal LM model with all the variables performs worse than the LASSO model which is much simpler. Because of the better performance (likely due to overfitting in the LM model's case) and simpler model coefficients we prefer the LASSO model.
+As we can see in the metrics above, the normal LM model with all the variables performs worse than the LASSO model which is much simpler. Because of the better performance (likely due to overfitting in the LM model's case) and simpler model coefficients we prefer the LASSO model at this point, but better models are yet to come.
  
 d.
 
@@ -209,23 +208,7 @@ ggplot(lm_mod_out, aes(x = temp, y = resid)) +
     geom_smooth() +
     geom_hline(yintercept = 0, color = "red") +
     theme_classic() +
-    ylim(-50,150) +
     ggtitle("LM model residual plot")
-
-ggplot(lasso_mod_out, aes(x = temp, y = resid)) +
-    geom_point() +
-    geom_smooth() +
-    geom_hline(yintercept = 0, color = "red") +
-    theme_classic() +
-    ylim(-50,150) +
-    ggtitle("LM model residual plot")
-
-ggplot(lm_mod_out, aes(x = temp, y = resid)) +
-    geom_point() +
-    geom_smooth() +
-    geom_hline(yintercept = 0, color = "red") +
-    theme_classic() +
-    ggtitle("LASSO model residual plot")
 
 ggplot(lasso_mod_out, aes(x = temp, y = resid)) +
     geom_point() +
@@ -235,11 +218,10 @@ ggplot(lasso_mod_out, aes(x = temp, y = resid)) +
     ggtitle("LASSO model residual plot")
 
 ```
-The residual plots above confirm that the LASSO model is a better predictor. As we can see, the resuiduals for the lASSO model are tighter to the y axis when comapred to the LM model.
 
 e.
 
-As mentioned earlier, the variable with the most imporatnce seems to be temperature, which makes sense. We can see this by looking at the coeffecicents of the better LASSO model. There are some other predictors, like a lot of fires seemed to happen in september, but those other predictors are much less impactful on the model's predition when compared to temperature.
+As mentioned earlier, the variables don't seem to be impactful on the performance of the model, Which is interesting because it means that the predictors are fairly useless when trying to predict fires, this just goes to show the unpredictive nature of wildfires. We can also see that in the residual plots above, given that the LM model and the LASSO model (which has all coefficients set to 0) because the residual plots don't look very different.
 
 <br>  
 
