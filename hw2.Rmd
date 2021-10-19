@@ -326,7 +326,8 @@ gam_mod %>% pluck('fit') %>% plot( all.terms = TRUE, pages = 1)
 
 2. **Summarize investigations**
     - Decide on an overall best model based on your investigations so far. To do this, make clear your analysis goals. Predictive accuracy? Interpretability? A combination of both?
-  A mix of interpretability and predictive accuracy is best. The interpradability of our model is important because if someone actually wants to predict a fire using our model, they should only have to take and interpret the measurements that matter the most. The predictive power of the model obviously should not be significantly sacrificed for this goal because predicting fires is the outcome that matters. Taking both of these factors into account, we believe that the LASSO model is far superior to the LM model, because the LASSO model only has 3 relevant predictors and its residual bound is much tighter, especially within the negative residuals, which means that in the LM model there were significantly more false positives. When false positives did occur, the LASSO model predicted much smaller fires than the LM model. However, both models were not very good at predicting large fires.
+  A mix of interpretability and predictive accuracy is best. The interpradability of our model is important because if someone actually wants to predict a fire using our model, they should only have to take and interpret the measurements that matter the most. The predictive power of the model obviously should not be significantly sacrificed for this goal because predicting fires is the outcome that matters.
+  Taking these factors into account, we do not belive that any of our models are best. That is to say that none of our models have sufficient predictive power to be used to predict fires. We can see this in the LASSO model and specifically the fact that all of the coefficients in the model were set to 0, indicating that none of them are important. We can also see this through the error metrics for our models. The LASSO model had the best error metrics when preforming corss validation, which means that all the other models (splines, normal LM, and our GAM models) were all overfit to training data.
 
 
 <br>
@@ -334,8 +335,8 @@ gam_mod %>% pluck('fit') %>% plot( all.terms = TRUE, pages = 1)
 3. **Societal impact**
     - Are there any harms that may come from your analyses and/or how the data were collected?
     - What cautions do you want to keep in mind when communicating your work?
-  If these models are taken to be accurate, there could be real harms that occur. Specifically, that our models do not predict big fires very well at all. That is the take away that should be taken from this analysis, that big fires are very unpredictable.
-  Another possible harm is if the area variable is interpreted as pure area, without consideration for the transformation that occurred prior to analysis. The area was transformed with an ln(x+1) function. Therefore, all predictions should be interpreted through the inverse of this transform to be interpreted in any meaningful way.
+  If these models are taken to be accurate, there could be real harms that occur. Specifically, that our models do not predict fires very well at all. That is the take away that should be taken from this analysis, that fires are very unpredictable. This is actually a very important take-away and something that would certainly be useful for fire experts to know.
+  Another possible harm is if the area variable is interpreted as pure area, without consideration for the transformation that occurred prior to analysis. The area was transformed with an ln(x+1) function. Therefore, all predictions should be interpreted through the inverse of this transform to be interpreted in any meaningful way. That being said, the predictions from the models should not be interpreted at all, because, as mentioned above, all predictinos are quite bad.
     
     
     
