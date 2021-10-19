@@ -67,7 +67,9 @@ The dataset has a variety of variables that might impact the strength and likeli
 fires <- fires %>%
     # we get rid of x and y because those are not relevant to the predictino of fire (they are the coordinates of the fires within the dataset)
     # we get rid of day and month because there isnt a huge reason that they should impact the fires, we are more interested in how weather factors impact fires, not day of the week or month
-    select(-X, -Y, -day, -month)
+    select(-day) %>%
+   filter(area > 0) %>%
+    mutate(area = log(area+.1))
 ```
 
 ```{r}
@@ -122,7 +124,7 @@ full_model <- fit(full_lm_wf, data = fires)
 ```{r}
 # Tune Model (trying a variety of values of Lambda penalty)
 penalty_grid <- grid_regular(
-  penalty(range = c(-3, 0.5)), #log10 transformed 
+  penalty(range = c(-5, 3)), #log10 transformed 
   levels = 30)
 
 tune_output <- tune_grid( # new function for tuning parameters
@@ -144,8 +146,6 @@ tune_output <- tune_grid( # new function for tuning parameters
 
 best_penalty
 
-# the best penalty within the range is 3.162278
-
 final_wf <- finalize_workflow(lasso_wf_tune, best_penalty)
 
 final_fit <- fit(final_wf, data = fires)
@@ -161,7 +161,7 @@ c.
 
 full_model %>% tidy()
 
-best_penalty <- select_by_one_std_err(tune_output, metric = 'rmse', desc(penalty))
+best_penalty <- select_best(tune_output, metric = 'rmse')
 
 final_wf <- finalize_workflow(lasso_wf_tune, best_penalty)
 
@@ -286,6 +286,33 @@ cv_output %>% collect_metrics(summarize = TRUE)
 LM_model_cv %>% collect_metrics(summarize=TRUE)
 LASSO_model_cv %>% collect_metrics(summarize=TRUE)
 ```
+
+GAM WITH SPLINES
+```{r}
+gam_spec <- 
+  gen_additive_mod() %>%
+  set_engine(engine = 'mgcv') %>%
+  set_mode('regression') 
+
+gam_mod <- fit(gam_spec,
+    area ~ s(DMC) + s(temp) + s(RH) + s(wind) + s(ISI) + s(DC) + s(FFMC),
+    data = fires
+)
+```
+
+```{r}
+par(mfrow=c(2,2))
+gam_mod %>% pluck('fit') %>% mgcv::gam.check() 
+```
+
+```{r}
+gam_mod %>% pluck('fit') %>% plot( all.terms = TRUE, pages = 1)
+```
+
+How does test performance of the GAM compare to other models you explored?
+
+
+Do you gain any insights from the GAM output plots for each predictor?
 
 
 <br>
