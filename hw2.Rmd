@@ -316,11 +316,13 @@ gam_mod %>% pluck('fit') %>% mgcv::gam.check()
 ```{r}
 gam_mod %>% pluck('fit') %>% summary() 
 ```
-In the above table you can see that the r-squared is 0.2 and that the model only explains 5.3% of the variance in the outcome. This is quite bad and again comes down to the lack of non-linearity in the data (which can also be observed below) and the overall lack of variable importance for any variable in the dataset.
+In the above table you can see that the r-squared is 0.2 and that the model only explains 5.3% of the variance in the outcome. This is quite bad (especially when compared to our other models) and again comes down to the lack of non-linearity in the data (which can also be observed below) and the overall lack of variable importance for any variable in the dataset.
 
 ```{r}
 gam_mod %>% pluck('fit') %>% plot( all.terms = TRUE, pages = 1)
 ```
+
+From the plots we can see that most of our data is linear (hovering around 1 edf with the default range) while RH is the most nonlinear plot (with an edf of 2). As GAM regression is primarily to generate models explaining nonlinearity in multiple predictors, GAMs are most likely not the ideal model to be using in order to perform predictions on the data.
 
 <br>
 
