@@ -2,7 +2,7 @@
 knitr::opts_chunk$set(echo=TRUE, eval=TRUE)
 ```
 
-# Homework 2 {-}
+# Homework 3 {-}
 
 Jeremy Hubinger, and Tamur Asar
 
