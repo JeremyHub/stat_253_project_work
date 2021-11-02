@@ -55,16 +55,18 @@ library(readr)
 library(ggplot2)
 library(dplyr)
 library(tidymodels)
+library(rpart.plot)
+library(vip)
 tidymodels_prefer()
 
-fires <- read_csv("forestfires.csv")
+fires_raw <- read_csv("forestfires.csv")
 ```
 
 The dataset has a variety of variables that might impact the strength and likelihood of fires. These variables include mainly things about weather, like temperature, pressure, wind, rain, ect. The variable we are trying to predict is "area" which is the area burned by fires on that day.
 
 ```{r}
 # data cleaning
-fires <- fires %>%
+fires <- fires_raw %>%
     # we get rid of day because there isnt a huge reason that it should impact the fires, we are more interested in how weather factors impact fires, not day of the week
     select(-day) %>%
    filter(area > 0) %>%
@@ -326,6 +328,66 @@ From the plots we can see that most of our data is linear (hovering around 1 edf
 
 <br>
 
+```{r}
+fires_category <- fires_raw %>%
+  mutate(area = case_when(area>0~1,area==0~0)) %>%
+  mutate(area = as.factor(area))
+```
+
+```{r}
+set.seed(123) # don't change this
+
+data_fold <- vfold_cv(fires_category, v = 10)
+
+ct_spec_tune <- decision_tree() %>%
+  set_engine(engine = 'rpart') %>%
+  set_args(cost_complexity = tune(),  
+           min_n = 2, 
+           tree_depth = NULL) %>% 
+  set_mode('classification') 
+
+data_rec <- recipe(area ~ ., data = fires_category)
+
+data_wf_tune <- workflow() %>%
+  add_model(ct_spec_tune) %>%
+  add_recipe(data_rec)
+
+param_grid <- grid_regular(cost_complexity(range = c(-5, 1)), levels = 10) 
+
+tune_res <- tune_grid(
+  data_wf_tune, 
+  resamples = data_fold, 
+  grid = param_grid, 
+  metrics = metric_set(accuracy) #change this for regression trees
+)
+```
+
+```{r}
+autoplot(tune_res) + theme_classic()
+```
+
+```{r}
+best_complexity <- select_by_one_std_err(tune_res, metric = 'accuracy', desc(cost_complexity))
+data_wf_final <- finalize_workflow(data_wf_tune, best_complexity)
+
+land_final_fit <- fit(data_wf_final, data = fires_category)
+
+
+tune_res %>% 
+  collect_metrics() %>%
+  filter(cost_complexity == best_complexity%>%pull(cost_complexity))
+```
+
+```{r}
+par(mfrow = c(1,3))
+land_final_fit %>% extract_fit_engine() %>% rpart.plot()
+```
+```{r}
+land_final_fit %>%
+  extract_fit_engine() %>%
+  pluck('variable.importance')
+```
+
 2. **Summarize investigations**
     - Decide on an overall best model based on your investigations so far. To do this, make clear your analysis goals. Predictive accuracy? Interpretability? A combination of both?
   A mix of interpretability and predictive accuracy is best. The interpradability of our model is important because if someone actually wants to predict a fire using our model, they should only have to take and interpret the measurements that matter the most. The predictive power of the model obviously should not be significantly sacrificed for this goal because predicting fires is the outcome that matters.
@@ -339,13 +401,13 @@ From the plots we can see that most of our data is linear (hovering around 1 edf
     - What cautions do you want to keep in mind when communicating your work?
   If these models are taken to be accurate, there could be real harms that occur. Specifically, that our models do not predict fires very well at all. That is the take away that should be taken from this analysis, that fires are very unpredictable. This is actually a very important take-away and something that would certainly be useful for fire experts to know.
   Another possible harm is if the area variable is interpreted as pure area, without consideration for the transformation that occurred prior to analysis. The area was transformed with an ln(x+1) function. Therefore, all predictions should be interpreted through the inverse of this transform to be interpreted in any meaningful way. That being said, the predictions from the models should not be interpreted at all, because, as mentioned above, all predictinos are quite bad.
-    
-    
-    
-    
-    
-    
-    
+
+
+
+
+
+
+
 
 
 
