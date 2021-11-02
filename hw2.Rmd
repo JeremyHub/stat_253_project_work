@@ -330,6 +330,7 @@ From the plots we can see that most of our data is linear (hovering around 1 edf
 
 ```{r}
 fires_category <- fires_raw %>%
+  select(-day) %>%
   mutate(area = case_when(area>0~1,area==0~0)) %>%
   mutate(area = as.factor(area))
 ```
@@ -352,7 +353,7 @@ data_wf_tune <- workflow() %>%
   add_model(ct_spec_tune) %>%
   add_recipe(data_rec)
 
-param_grid <- grid_regular(cost_complexity(range = c(-5, 1)), levels = 10) 
+param_grid <- grid_regular(cost_complexity(range = c(-5, 2)), levels = 10) 
 
 tune_res <- tune_grid(
   data_wf_tune, 
@@ -386,6 +387,110 @@ land_final_fit %>% extract_fit_engine() %>% rpart.plot()
 land_final_fit %>%
   extract_fit_engine() %>%
   pluck('variable.importance')
+```
+```{r}
+# Model Specification
+rf_spec <- rand_forest() %>%
+  set_engine(engine = 'ranger') %>% 
+  set_args(mtry = NULL, # size of random subset of variables; default is floor(sqrt(number of total predictors))
+           trees = 1000, # Number of trees
+           min_n = 2,
+           probability = FALSE, # FALSE: get hard predictions (not needed for regression)
+           importance = 'impurity') %>% # we'll come back to this at the end
+  set_mode('classification') # change this for regression
+
+# Recipe
+data_rec <- recipe(area ~ ., data = fires_category)
+```
+
+
+```{r}
+# Workflows
+data_wf_mtry2 <- workflow() %>%
+  add_model(rf_spec %>% set_args(mtry = 2)) %>%
+  add_recipe(data_rec)
+
+data_wf_mtry10 <- workflow() %>%
+  add_model(rf_spec %>% set_args(mtry = 10)) %>%
+  add_recipe(data_rec)
+
+## Create workflows for mtry = 12, 74, and 147
+
+data_wf_mtry12 <- workflow() %>%
+  add_model(rf_spec %>% set_args(mtry = 12)) %>%
+  add_recipe(data_rec)
+
+data_wf_mtry6 <- workflow() %>%
+  add_model(rf_spec %>% set_args(mtry = 6)) %>%
+  add_recipe(data_rec)
+```
+
+```{r}
+# Fit Models
+set.seed(123) # make sure to run this before each fit so that you have the same 1000 trees
+data_fit_mtry2 <- fit(data_wf_mtry2, data = fires_category)
+
+# Fit models for 12
+set.seed(123) 
+data_fit_mtry12 <- fit(data_wf_mtry12, data = fires_category)
+
+set.seed(123) 
+data_fit_mtry10 <- fit(data_wf_mtry10, data = fires_category)
+
+set.seed(123) 
+data_fit_mtry6 <- fit(data_wf_mtry6, data = fires_category)
+```
+
+```{r}
+# Custom Function to get OOB predictions, true observed outcomes and add a user-provided model label
+rf_OOB_output <- function(fit_model, model_label, truth){
+    tibble(
+          .pred_class = fit_model %>% extract_fit_engine() %>% pluck('predictions'), #OOB predictions
+          area = truth,
+          label = model_label
+      )
+}
+```
+
+```{r}
+# Evaluate OOB Metrics
+
+data_rf_OOB_output <- bind_rows(
+    rf_OOB_output(data_fit_mtry2,2, fires_category %>% pull(area)),
+    rf_OOB_output(data_fit_mtry12,12, fires_category %>% pull(area)),
+    rf_OOB_output(data_fit_mtry10,10, fires_category %>% pull(area)),
+    rf_OOB_output(data_fit_mtry6,6, fires_category %>% pull(area))
+)
+
+data_rf_OOB_output = data_rf_OOB_output %>% 
+    group_by(label) %>%
+    accuracy(truth = area, estimate = .pred_class)
+```
+
+```{r}
+ggplot(data=data_rf_OOB_output, aes(y=.estimate,x=label)) +
+    geom_point() +
+    theme_classic()
+```
+```{r}
+data_fit_mtry12
+```
+```{r}
+rf_OOB_output(data_fit_mtry12,12, fires_category %>% pull(area)) %>%
+    conf_mat(truth = area, estimate= .pred_class)
+```
+```{r}
+model_output2 <- data_wf_mtry12 %>% 
+  update_model(rf_spec %>% set_args(importance = "permutation")) %>% #based on permutation
+  fit(data = fires_category) %>% 
+    extract_fit_engine() 
+
+model_output2 %>% 
+    vip(num_features = 30) + theme_classic()
+
+
+model_output2 %>% vip::vi() %>% head()
+model_output2 %>% vip::vi() %>% tail()
 ```
 
 2. **Summarize investigations**
