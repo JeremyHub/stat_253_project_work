@@ -328,13 +328,54 @@ From the plots we can see that most of our data is linear (hovering around 1 edf
 
 <br>
 
+HW 4 CLASSIFICATION:
 ```{r}
 fires_category <- fires_raw %>%
   select(-day) %>%
   mutate(area = case_when(area>0~1,area==0~0)) %>%
-  mutate(area = as.factor(area))
+  mutate(area = as.factor(area)) #%>%
+  #mutate(season = case_when(month=="dec"||month=="jan"||month=="feb"~"winter",
+                            #month=="mar"||month=="apr"||month=="may"~"spring",
+                            #month=="june"||month=="jul"||month=="aug"~"summer",
+                            #month=="sep"||month=="oct"||month=="nov"~"fall"))
 ```
 
+LOGISTIC REGRESSION:
+```{r}
+fires_category <- fires_category %>%
+  mutate(area = relevel(factor(area), ref='0')) # set ref level
+
+# log reg mode spec
+logistic_spec <- logistic_reg() %>%
+    set_engine('glm') %>%
+    set_mode('classification')
+
+# recipe
+logistic_rec <- recipe(area ~ temp + RH + DMC + X + DC + Y + FFMC, data = fires_category)
+
+# workflow: rec + model
+log_wf <- workflow() %>% 
+    add_recipe(logistic_rec) %>%
+    add_model(logistic_spec) 
+
+# fit
+log_fit <- fit(log_wf, data = fires_category)
+```
+
+```{r}
+log_fit %>% tidy()
+```
+```{r}
+log_fit %>% tidy() %>%
+  mutate(OR.conf.low = exp(estimate - 1.96*std.error), OR.conf.high = exp(estimate + 1.96*std.error)) %>% # do this first
+  mutate(OR = exp(estimate))
+```
+Larger the OR value the higher the chance there is a fire.
+Originally, we included month which showed that the categorical variable December month indicates a high chance of a fire while January and November indicate a very low chance of a fire. This was because of a lack of data: there were 9 "true" cases for fires in December and 0 "false" cases. This caused the  standard errors of these months to be very high, indicating that month is a bad predictor for logistic regression despite being an effective predictor with the trees method. In the current adata we remove month from our model.
+
+This data shows that temp, RH, DMC, X, Y, DC, and FFMC are all relatively similar at predicting whether there was a fire or not. 
+
+TREES and BAGGING:
 ```{r}
 set.seed(123) # don't change this
 

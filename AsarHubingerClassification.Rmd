@@ -1,0 +1,143 @@
+---
+title: "AsarHubingerClassification"
+output: html_document
+---
+
+```{r hw2_setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, eval=TRUE)
+```
+
+# Homework 4 {-}
+
+Jeremy Hubinger, and Tamur Asar
+
+```{r}
+# library statements 
+# read in data
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(tidymodels)
+library(rpart.plot)
+library(vip)
+tidymodels_prefer()
+
+fires_raw <- read_csv("forestfires.csv")
+```
+
+```{r}
+# data cleaning
+fires <- fires_raw %>%
+    # we get rid of day because there isnt a huge reason that it should impact the fires, we are more interested in how weather factors impact fires, not day of the week
+    select(-day) %>%
+   filter(area > 0) %>%
+    mutate(area = log(area+.1))
+```
+
+```{r}
+fires_category <- fires_raw %>%
+  mutate(area = case_when(area>0~1,area==0~0)) %>%
+  mutate(area = as.factor(area)) %>%
+  mutate(season = case_when(month=="dec"|month=="jan"|month=="feb"~"winter",
+                            month=="mar"|month=="apr"|month=="may"~"spring",
+                            month=="june"|month=="jul"|month=="aug"~"summer",
+                            month=="sep"|month=="oct"|month=="nov"~"fall"))
+```
+
+RESEARCH QUESTION:
+Which predictors are best at determining whether a fire occurred or not?
+
+CLASSIFICATION METHODS:
+
+LOGISTIC REGRESSION:
+```{r}
+fires_category <- fires_category %>%
+  mutate(area = relevel(factor(area), ref='0')) # set ref level
+
+# log reg mode spec
+logistic_spec <- logistic_reg() %>%
+    set_engine('glm') %>%
+    set_mode('classification')
+
+# recipe
+logistic_rec <- recipe(area ~ temp + RH + DMC + X + DC + Y + FFMC + season, data = fires_category)
+
+# workflow: rec + model
+log_wf <- workflow() %>% 
+    add_recipe(logistic_rec) %>%
+    add_model(logistic_spec) 
+
+# fit
+log_fit <- fit(log_wf, data = fires_category)
+```
+
+```{r}
+log_fit %>% tidy()
+```
+
+```{r}
+log_fit %>% tidy() %>%
+  mutate(OR.conf.low = exp(estimate - 1.96*std.error), OR.conf.high = exp(estimate + 1.96*std.error)) %>% # do this first
+  mutate(OR = exp(estimate))
+```
+The larger the OR value the higher the chance there is a fire.
+Originally, we included month which showed that the categorical variable December month indicates a high chance of a fire while January and November indicate a very low chance of a fire. This was because of a lack of data: there were 9 "true" cases for fires in December and 0 "false" cases. This caused the  standard errors of these months to be very high, indicating that month is a bad predictor for logistic regression despite being an effective predictor with the trees method.
+
+In the current data we remove month from our model and instead include season which aggregates the months by their respective seasons in Portugal (where the data set is taken from). This creates broader groupings that circumvents our previous issue of having insufficient data to make predictions. This data shows that temp, RH, DMC, X, Y, DC, and FFMC are all relatively similar at predicting whether there was a fire or not.
+As far as seasons go, fall (the default) is the least indicative of a fire while spring and summer are similar to the other predictors. However, winter appears to have the strongest correlation with there being a fire. This is interesting as winter is classified as December, January, and February. As established above, December in the data has many fires while January has next to none.
+
+TREES and BAGGING:
+```{r}
+set.seed(123) # don't change this
+
+data_fold <- vfold_cv(fires_category, v = 10)
+
+ct_spec_tune <- decision_tree() %>%
+  set_engine(engine = 'rpart') %>%
+  set_args(cost_complexity = tune(),  
+           min_n = 2, 
+           tree_depth = NULL) %>% 
+  set_mode('classification') 
+
+data_rec <- recipe(area ~ ., data = fires_category)
+
+data_wf_tune <- workflow() %>%
+  add_model(ct_spec_tune) %>%
+  add_recipe(data_rec)
+
+param_grid <- grid_regular(cost_complexity(range = c(-5, 1)), levels = 10) 
+
+tune_res <- tune_grid(
+  data_wf_tune, 
+  resamples = data_fold, 
+  grid = param_grid, 
+  metrics = metric_set(accuracy) #change this for regression trees
+)
+```
+
+```{r}
+autoplot(tune_res) + theme_classic()
+```
+
+```{r}
+best_complexity <- select_by_one_std_err(tune_res, metric = 'accuracy', desc(cost_complexity))
+data_wf_final <- finalize_workflow(data_wf_tune, best_complexity)
+
+land_final_fit <- fit(data_wf_final, data = fires_category)
+
+
+tune_res %>% 
+  collect_metrics() %>%
+  filter(cost_complexity == best_complexity%>%pull(cost_complexity))
+```
+
+```{r}
+par(mfrow = c(1,3))
+land_final_fit %>% extract_fit_engine() %>% rpart.plot()
+```
+```{r}
+land_final_fit %>%
+  extract_fit_engine() %>%
+  pluck('variable.importance')
+```
+
