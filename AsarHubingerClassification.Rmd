@@ -31,13 +31,20 @@ fires <- fires_raw %>%
     # we get rid of day because there isnt a huge reason that it should impact the fires, we are more interested in how weather factors impact fires, not day of the week
     select(-day) %>%
    filter(area > 0) %>%
-    mutate(area = log(area+.1))
+    mutate(area = log(area+.1)) %>% 
+  # transform month to season for larger groupings
+  mutate(season = case_when(month=="dec"|month=="jan"|month=="feb"~"winter",
+                            month=="mar"|month=="apr"|month=="may"~"spring",
+                            month=="june"|month=="jul"|month=="aug"~"summer",
+                            month=="sep"|month=="oct"|month=="nov"~"fall"))
+
 ```
 
 ```{r}
 fires_category <- fires_raw %>%
   mutate(area = case_when(area>0~1,area==0~0)) %>%
   mutate(area = as.factor(area)) %>%
+  # transform month to season for larger groupings
   mutate(season = case_when(month=="dec"|month=="jan"|month=="feb"~"winter",
                             month=="mar"|month=="apr"|month=="may"~"spring",
                             month=="june"|month=="jul"|month=="aug"~"summer",
@@ -141,3 +148,77 @@ land_final_fit %>%
   pluck('variable.importance')
 ```
 
+CLUSTERING
+
+```{r}
+fires_sub <- fires %>%
+    select(temp, RH, DMC, X, DC, Y, FFMC)
+
+dist_mat_scaled <- dist(scale(fires_sub))
+
+summary(fires_sub)
+
+hc_complete <- hclust(dist_mat_scaled, method = "complete")
+hc_single <- hclust(dist_mat_scaled, method = "single")
+hc_average <- hclust(dist_mat_scaled, method = "average")
+hc_centroid <- hclust(dist_mat_scaled, method = "centroid")
+
+plot(hc_complete)
+plot(hc_single)
+plot(hc_average)
+plot(hc_centroid)
+```
+
+```{r}
+fires <- fires %>%
+    mutate(
+        hclust_height = factor(cutree(hc_complete, h = 5)), # Cut at height (h) 3
+        hclust_num6 = factor(cutree(hc_complete, k = 6)) # Cut into 6 clusters (k)
+    )
+
+ggplot(fires, aes(y = hclust_height, x = area, colour = temp, size=DMC)) +
+    geom_point() +
+    theme_classic()
+```
+
+This model shows us that clustering methods are not effective on our dataset as there is no strong correlation between any key variables and the measured area of the fire. If in the plot above, we saw that there are some clusters that only have small fires, and some clusters that only have large fires, that would tell us that clustering would be effective at predicting fires. However, that is not what we see. We can see that the area of the fires within each cluster are quite spread out, meaining that clusters isn't a very good way of predicting fires based on our data.
+
+we tried k means but liked dendrograms more
+```{r eval=FALSE}
+fires_sub <- fires %>%
+    select(temp, RH, DMC, X, DC, Y, FFMC)
+
+# Data-specific function to cluster and calculate total within-cluster SS
+fires_cluster_ss <- function(k){
+    # Perform clustering
+    kclust <- kmeans(scale(fires_sub), centers = k)
+
+    # Return the total within-cluster sum of squares
+    return(kclust$tot.withinss)
+}
+
+tibble(
+    k = 1:15,
+    tot_wc_ss = purrr::map_dbl(1:15, fires_cluster_ss)
+) %>% 
+    ggplot(aes(x = k, y = tot_wc_ss)) +
+    geom_point() + 
+    labs(x = "Number of clusters",y = 'Total within-cluster sum of squares') + 
+    theme_classic()
+    
+```
+
+```{r eval=FALSE}
+kclust_k3 <- kmeans(fires_sub, centers = 3)
+
+# Display the cluter assignments
+kclust_k3$cluster
+
+# Add a variable (kclust_3) to the original dataset 
+# containing the cluster assignments
+fires <- fires %>%
+    mutate(kclust_3 = factor(kclust_k3$cluster))
+
+ggplot(fires, aes(x=X, y=Y, colour=kclust_3, size = area)) +
+    geom_point()
+```
