@@ -159,25 +159,23 @@ dist_mat_scaled <- dist(scale(fires_sub))
 summary(fires_sub)
 
 hc_complete <- hclust(dist_mat_scaled, method = "complete")
-hc_single <- hclust(dist_mat_scaled, method = "single")
-hc_average <- hclust(dist_mat_scaled, method = "average")
-hc_centroid <- hclust(dist_mat_scaled, method = "centroid")
 
 plot(hc_complete)
-plot(hc_single)
-plot(hc_average)
-plot(hc_centroid)
 ```
 
 ```{r}
 fires <- fires %>%
     mutate(
         hclust_height = factor(cutree(hc_complete, h = 5)), # Cut at height (h) 3
-        hclust_num6 = factor(cutree(hc_complete, k = 6)) # Cut into 6 clusters (k)
+        hclust_num6 = factor(cutree(hc_complete, k = 6)), # Cut into 6 clusters (k)
+        temp_factor = if(temp>25) 25 else 0,
+        temp_factor = if(temp_factor==0) (if(temp>10) 10 else 0) else temp_factor,
+        temp_factor = if(temp_factor==0) 0 else temp_factor
     )
 
-ggplot(fires, aes(y = hclust_height, x = area, colour = temp, size=DMC)) +
-    geom_point() +
+ggplot(fires, aes(x = hclust_height, y = area)) +
+    geom_boxplot() +
+    facet_wrap(vars(factor(temp_factor))) +
     theme_classic()
 ```
 
