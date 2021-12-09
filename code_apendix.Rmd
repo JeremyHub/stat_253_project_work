@@ -2,51 +2,9 @@
 knitr::opts_chunk$set(echo=TRUE, eval=TRUE)
 ```
 
-# Homework 3 {-}
+### Code Apendix {-}
 
 Jeremy Hubinger, and Tamur Asar
-
-
-<br><br><br>
-
-
-
-
-## Project Work {-}
-
-### Instructions {-} 
-
-**Goal:** Begin an analysis of your dataset to answer your **regression** research question.
-
-<br>
-
-**Collaboration:** Form a team (2-3 members) for the project and this part can be done as a team. Only one team member should submit a Project Work section. Make sure you include the full names of all of the members in your write up. 
-
-<br>
-
-**Data cleaning:** If your dataset requires any cleaning (e.g., merging datasets, creation of new variables), first consult the [R Resources page](r-resources.html) to see if your questions are answered there. If not, post on the #rcode-questions channel in our Slack workspace to ask for help. *Please ask for help early and regularly* to avoid stressful workloads.
-
-<br>
-
-### Required Analyses {-}
-
-1. **Initial investigation: ignoring nonlinearity (for now)**
-    a. Use ordinary least squares (OLS) by using the `lm` engine and LASSO (`glmnet` engine) to build  a series of initial regression models for your quantitative outcome as a function of the predictors of interest. (As part of data cleaning, exclude any variables that you don't want to consider as predictors.)
-        - You'll need two model specifications, `lm_spec` and `lm_lasso_spec` (you'll need to tune this one).
-    b. For each set of variables, you'll need a `recipe` with the `formula`, `data`, and pre-processing steps
-        - You may want to have steps in your recipe that remove variables with near zero variance (`step_nzv()`), remove variables that are highly correlated with other variables (`step_corr()`), normalize all quantitative predictors (`step_normalize(all_numeric_predictors())`) and add indicator variables for any categorical variables (`step_dummy(all_nominal_predictors())`).
-        - These models should not include any transformations to deal with nonlinearity. You'll explore this in the next investigation.
-    c. Estimate the test performance of the models using CV. Report and interpret (with units) the CV metric estimates along with a measure of uncertainty in the estimate (`std_error` is readily available when you used `collect_metrics(summarize=TRUE)`).
-        - Compare estimated test performance across the models. Which models(s) might you prefer?
-    d. Use residual plots to evaluate whether some quantitative predictors might be better modeled with nonlinear relationships.
-    e. Which variables do you think are the most important predictors of your quantitative outcome? Justify your answer. Do the methods you've applied reach consensus on which variables are most important? What insights are expected? Surprising?
-        - Note that if some (but not all) of the indicator terms for a categorical predictor are selected in the final models, the whole predictor should be treated as selected.
-
-<br>
-
-#### Your Work {-}
-
-a & b.
 
 ```{r}
 # library statements 
@@ -109,14 +67,13 @@ fires %>%
 
 
 ```
+##LM and LASSO models
 
 ```{r}
 # creation of cv folds
 set.seed(88)
 fires_cv10 <- vfold_cv(fires, v = 10)
 ```
-
-We now fit multiple types of models. One model is fit using simple LM regression with all predictors. The second model is fit using LASSO regression to attempt to provide some amount of filtering to the model predictors. Both models are fit and compared later on.
 
 ```{r}
 # model spec
@@ -192,9 +149,6 @@ final_fit <- fit(final_wf, data = fires)
 
 tidy(final_fit)
 ```
-It seems as though all variables were set to 0 with LASSO. This is very interesting because it indicates that none of the variables make a significant effect in the predictive power of the model.
-
-c.
 
 ```{r}
 #  calculate/collect CV metrics
@@ -229,7 +183,6 @@ var_imp_data <- tibble(
 )
 var_imp_data %>% arrange(desc(var_imp))
 ```
-Based on the above information, using the LASSO model to tell what variables are the most important (which is none). This is much more readable than the LM model which has a lot of importance on a lot of different variables which don't seem to matter, and actually hurt the model's performance on test data.
 
 ```{r}
 tune_output %>% collect_metrics() %>% filter(penalty == (best_penalty %>% pull(penalty)))
@@ -241,9 +194,6 @@ LM_model_cv <- fit_resamples(full_lm_wf,
 
 LM_model_cv %>% collect_metrics(summarize=TRUE)
 ```
-As we can see in the metrics above, the normal LM model with all the variables performs worse than the LASSO model which is much simpler. Because of the better performance (likely due to overfitting in the LM model's case) and simpler model coefficients we prefer the LASSO model at this point, but better models are yet to come.
- 
-d.
 
 ```{r}
 # visual residuals
@@ -274,14 +224,6 @@ ggplot(lasso_mod_out, aes(x = .pred, y = resid)) +
     ggtitle("LASSO model residual plot")
 
 ```
-
-e.
-
-As mentioned earlier, the variables don't seem to be impactful on the performance of the model, Which is interesting because it means that the predictors are fairly useless when trying to predict fires, this just goes to show the unpredictive nature of wildfires. We can also see that in the residual plots above, given that the LM model and the LASSO model (which has all coefficients set to 0) because the residual plots don't look very different.
-
-<br>  
-
-Part 2:
 
 ```{r}
 # Natural Spline Recipe
@@ -355,10 +297,8 @@ cv_output %>% collect_metrics(summarize = TRUE) # splines
 LM_model_cv %>% collect_metrics(summarize=TRUE)
 tune_output %>% collect_metrics(summarize=TRUE) %>% filter(penalty == (best_penalty %>% pull(penalty)))
 ```
-Above we can see that the splines did not improve our model that much. This can be largely explained by the lack of non-linearity in our predictors (as we can see in the plots above), as well as the general overall un-importance of our predictors (as we can see the LASSO model with all coefficients at 0 still performs the best).
 
-
-GAM WITH SPLINES
+#GAM WITH SPLINES
 ```{r}
 gam_spec <- 
   gen_additive_mod() %>%
@@ -379,17 +319,11 @@ gam_mod %>% pluck('fit') %>% mgcv::gam.check()
 ```{r}
 gam_mod %>% pluck('fit') %>% summary() 
 ```
-In the above table you can see that the r-squared is 0.2 and that the model only explains 5.3% of the variance in the outcome. This is quite bad (especially when compared to our other models) and again comes down to the lack of non-linearity in the data (which can also be observed below) and the overall lack of variable importance for any variable in the dataset.
 
 ```{r}
 gam_mod %>% pluck('fit') %>% plot( all.terms = TRUE, pages = 1)
 ```
-
-From the plots we can see that most of our data is linear (hovering around 1 edf with the default range) while RH is the most nonlinear plot (with an edf of 2). As GAM regression is primarily to generate models explaining nonlinearity in multiple predictors, GAMs are most likely not the ideal model to be using in order to perform predictions on the data.
-
-<br>
-
-HW 4 CLASSIFICATION:
+#Classification setup
 ```{r}
 fires_category <- fires_raw %>%
   select(-day) %>%
@@ -403,7 +337,7 @@ fires_category <- fires_raw %>%
                             month=="sep"|month=="oct"|month=="nov"~"fall"))
 ```
 
-LOGISTIC REGRESSION:
+#LOGISTIC REGRESSION:
 ```{r}
 fires_category <- fires_category %>%
   mutate(area = relevel(factor(area), ref='0')) # set ref level
@@ -438,12 +372,7 @@ log_fit %>% tidy() %>%
   mutate(OR.conf.low = exp(estimate - 1.96*std.error), OR.conf.high = exp(estimate + 1.96*std.error)) %>% # do this first
   mutate(OR = exp(estimate))
 ```
-Larger the OR value the higher the chance there is a fire.
-Originally, we included month which showed that the categorical variable December month indicates a high chance of a fire while January and November indicate a very low chance of a fire. This was because of a lack of data: there were 9 "true" cases for fires in December and 0 "false" cases. This caused the  standard errors of these months to be very high, indicating that month is a bad predictor for logistic regression despite being an effective predictor with the trees method. In the current adata we remove month from our model.
-
-This data shows that temp, RH, DMC, X, Y, DC, and FFMC are all relatively similar at predicting whether there was a fire or not. 
-
-TREES and BAGGING:
+#TREES and BAGGING:
 ```{r}
 set.seed(123) # don't change this
 
@@ -512,7 +441,6 @@ rf_spec <- rand_forest() %>%
 data_rec <- recipe(area ~ ., data = fires_category)
 ```
 
-
 ```{r}
 # Workflows
 data_wf_rf <- workflow() %>%
@@ -527,8 +455,6 @@ data_fit_rf <- fit(data_wf_rf , data = fires_category)
 
 
 ```
-
-
 
 ```{r}
 # Evaluate OOB Metrics
@@ -564,27 +490,33 @@ model_output2 %>% vip::vi() %>% head()
 model_output2 %>% vip::vi() %>% tail()
 ```
 
-2. **Summarize investigations**
-    - Decide on an overall best model based on your investigations so far. To do this, make clear your analysis goals. Predictive accuracy? Interpretability? A combination of both?
-  A mix of interpretability and predictive accuracy is best. The interpradability of our model is important because if someone actually wants to predict a fire using our model, they should only have to take and interpret the measurements that matter the most. The predictive power of the model obviously should not be significantly sacrificed for this goal because predicting fires is the outcome that matters.
-  Taking these factors into account, we do not belive that any of our models are best. That is to say that none of our models have sufficient predictive power to be used to predict fires. We can see this in the LASSO model and specifically the fact that all of the coefficients in the model were set to 0, indicating that none of them are important. We can also see this through the error metrics for our models. The LASSO model had the best error metrics when preforming corss validation, which means that all the other models (splines, normal LM, and our GAM models) were all overfit to training data.
+#CLUSTERING
 
+```{r}
+fires_sub <- fires %>%
+    select(temp, RH, DMC, X, DC, Y, FFMC)
 
-<br>
+dist_mat_scaled <- dist(scale(fires_sub))
 
-3. **Societal impact**
-    - Are there any harms that may come from your analyses and/or how the data were collected?
-    - What cautions do you want to keep in mind when communicating your work?
-  If these models are taken to be accurate, there could be real harms that occur. Specifically, that our models do not predict fires very well at all. That is the take away that should be taken from this analysis, that fires are very unpredictable. This is actually a very important take-away and something that would certainly be useful for fire experts to know.
-  Another possible harm is if the area variable is interpreted as pure area, without consideration for the transformation that occurred prior to analysis. The area was transformed with an ln(x+1) function. Therefore, all predictions should be interpreted through the inverse of this transform to be interpreted in any meaningful way. That being said, the predictions from the models should not be interpreted at all, because, as mentioned above, all predictinos are quite bad.
+summary(fires_sub)
 
+hc_complete <- hclust(dist_mat_scaled, method = "complete")
 
+plot(hc_complete)
+```
 
+```{r}
+fires <- fires %>%
+    mutate(
+        hclust_height = factor(cutree(hc_complete, h = 5)), # Cut at height (h) 3
+        hclust_num6 = factor(cutree(hc_complete, k = 6)), # Cut into 6 clusters (k)
+        temp_factor = if(temp>25) 25 else 0,
+        temp_factor = if(temp_factor==0) (if(temp>10) 10 else 0) else temp_factor,
+        temp_factor = if(temp_factor==0) 0 else temp_factor
+    )
 
-
-
-
-
-
-
-
+ggplot(fires, aes(x = hclust_height, y = area)) +
+    geom_boxplot() +
+    facet_wrap(vars(factor(temp_factor))) +
+    theme_classic()
+```
