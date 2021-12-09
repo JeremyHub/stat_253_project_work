@@ -70,7 +70,44 @@ fires <- fires_raw %>%
     # we get rid of day because there isnt a huge reason that it should impact the fires, we are more interested in how weather factors impact fires, not day of the week
     select(-day) %>%
    filter(area > 0) %>%
-    mutate(area = log(area+.1))
+    mutate(area = log(area+.1)) %>%
+  mutate(X = factor(X), Y = factor(Y)) %>%
+  mutate(geoGrids = factor(paste0(X,'-',Y))) %>%
+  mutate(season = case_when(month=="dec"|month=="jan"|month=="feb"~"winter",
+                            month=="mar"|month=="apr"|month=="may"~"spring",
+                            month=="jun"|month=="jul"|month=="aug"~"summer",
+                            month=="sep"|month=="oct"|month=="nov"~"fall"))
+```
+
+
+## EDA
+
+```{r}
+fires %>%
+  count(geoGrids)
+
+fires %>%
+  count(X,Y) %>%
+  ggplot(aes(x = X, y = Y,size = n)) + geom_point()
+
+
+fires %>%
+  count(X,Y,season) %>%
+  ggplot(aes(x = X, y = Y,size = n)) + geom_point() + facet_wrap(~season)
+
+
+fires %>%
+  ggplot(aes(x = area)) + geom_density() + facet_grid(Y~X)
+
+
+fires %>%
+  ggplot(aes(x = temp, y = area, color = factor(cut(ISI,4)))) + geom_point() + geom_smooth(se = FALSE)
+
+fires %>%
+  ggplot(aes(x = temp, y = area, color = season)) + geom_point() + geom_smooth(se = FALSE)
+
+
+
 ```
 
 ```{r}
@@ -100,7 +137,9 @@ lm_lasso_spec <-
 # recipes & workflows
 # both models are fit with the same recipe because they both start with all predictors and all predictors are normalized
 full_rec <- recipe(area ~ ., data = fires) %>%
+  step_rm(month,X,Y,rain,wind,temp,RH) %>%
     step_nzv(all_predictors()) %>% # removes variables with the same value
+    #step_novel(all_nominal_predictors()) %>%
     step_normalize(all_numeric_predictors()) %>% # important standardization step for LASSO
     step_dummy(all_nominal_predictors())  # creates indicator variables for categorical variables
 
@@ -169,18 +208,33 @@ final_wf <- finalize_workflow(lasso_wf_tune, best_penalty)
 final_fit <- fit(final_wf, data = fires)
 
 tidy(final_fit)
+
+#Lasso Var Importance
+glmnet_output <- final_fit %>% extract_fit_engine()
+    
+# Create a boolean matrix (predictors x lambdas) of variable exclusion
+bool_predictor_exclude <- glmnet_output$beta==0
+
+# Loop over each variable
+var_imp <- sapply(seq_len(nrow(bool_predictor_exclude)), function(row) {
+    this_coeff_path <- bool_predictor_exclude[row,]
+    if(sum(this_coeff_path) == ncol(bool_predictor_exclude)){ return(0)}else{
+    return(ncol(bool_predictor_exclude) - which.min(this_coeff_path) + 1)}
+})
+
+# Create a dataset of this information and sort
+var_imp_data <- tibble(
+    var_name = rownames(bool_predictor_exclude),
+    var_imp = var_imp
+)
+var_imp_data %>% arrange(desc(var_imp))
 ```
 Based on the above information, using the LASSO model to tell what variables are the most important (which is none). This is much more readable than the LM model which has a lot of importance on a lot of different variables which don't seem to matter, and actually hurt the model's performance on test data.
 
 ```{r}
-LASSO_model_cv <- fit_resamples(final_fit,
-  resamples = fires_cv10, 
-  metrics = metric_set(rmse, rsq, mae)
-)
+tune_output %>% collect_metrics() %>% filter(penalty == (best_penalty %>% pull(penalty)))
 
-LASSO_model_cv %>% collect_metrics(summarize=TRUE)
-
-LM_model_cv <- fit_resamples(full_model,
+LM_model_cv <- fit_resamples(full_lm_wf,
   resamples = fires_cv10, 
   metrics = metric_set(rmse, rsq, mae)
 )
@@ -205,14 +259,14 @@ lm_mod_out <- full_model %>%
     bind_cols(fires) %>%
     mutate(resid = area - .pred)
 
-ggplot(lm_mod_out, aes(x = temp, y = resid)) +
+ggplot(lm_mod_out, aes(x = .pred, y = resid)) +
     geom_point() +
     geom_smooth() +
     geom_hline(yintercept = 0, color = "red") +
     theme_classic() +
     ggtitle("LM model residual plot")
 
-ggplot(lasso_mod_out, aes(x = temp, y = resid)) +
+ggplot(lasso_mod_out, aes(x = .pred, y = resid)) +
     geom_point() +
     geom_smooth() +
     geom_hline(yintercept = 0, color = "red") +
@@ -232,18 +286,19 @@ Part 2:
 ```{r}
 # Natural Spline Recipe
 ns2_rec <- full_rec %>%
-  step_ns(temp, deg_free = 3) %>%
-  step_ns(RH, deg_free = 3) %>%
+  #step_ns(temp, deg_free = 3) %>%
+  #step_ns(RH, deg_free = 3) %>%
   step_ns(DMC, deg_free = 3) %>%
   step_ns(FFMC, deg_free = 3) %>%
   step_ns(DC, deg_free = 3) %>%
-  step_ns(ISI, deg_free = 3) %>%
-  step_ns(wind, deg_free = 3) # natural cubic spline (higher deg_free means more knots)
+  step_ns(ISI, deg_free = 3) #%>%
+  #step_ns(wind, deg_free = 3) # natural cubic spline (higher deg_free means more knots)
 
 # Workflow (Recipe + Model)
 wf <- workflow() %>%
     add_recipe(ns2_rec) %>%
     add_model(lm_spec)
+
 
 # CV to Evaluate
 cv_output <- fit_resamples(
@@ -264,7 +319,13 @@ ns_mod_output <- fires %>%
   bind_cols(predict(ns_mod, new_data = fires)) %>%
     mutate(resid = area - .pred)
 
-ggplot(ns_mod_output, aes(y=resid,x=temp)) +
+ggplot(ns_mod_output, aes(y=resid,x=.pred)) +
+    geom_point() +
+    geom_smooth(color = "blue", se = FALSE) +
+    geom_hline(yintercept = 0, color = "red") +
+    theme_classic()
+
+ggplot(ns_mod_output, aes(y=resid,x=.pred)) +
     geom_point() +
     geom_smooth(color = "blue", se = FALSE) +
     geom_hline(yintercept = 0, color = "red") +
@@ -276,7 +337,7 @@ ggplot(ns_mod_output, aes(y=resid,x=DMC)) +
     geom_hline(yintercept = 0, color = "red") +
     theme_classic()
 
-ggplot(ns_mod_output, aes(y=resid,x=RH)) +
+ggplot(ns_mod_output, aes(y=resid,x=ISI)) +
     geom_point() +
     geom_smooth(color = "blue", se = FALSE) +
     geom_hline(yintercept = 0, color = "red") +
@@ -292,7 +353,7 @@ ggplot(ns_mod_output, aes(y=resid,x=wind)) +
 ```{r}
 cv_output %>% collect_metrics(summarize = TRUE) # splines
 LM_model_cv %>% collect_metrics(summarize=TRUE)
-LASSO_model_cv %>% collect_metrics(summarize=TRUE)
+tune_output %>% collect_metrics(summarize=TRUE) %>% filter(penalty == (best_penalty %>% pull(penalty)))
 ```
 Above we can see that the splines did not improve our model that much. This can be largely explained by the lack of non-linearity in our predictors (as we can see in the plots above), as well as the general overall un-importance of our predictors (as we can see the LASSO model with all coefficients at 0 still performs the best).
 
@@ -333,11 +394,13 @@ HW 4 CLASSIFICATION:
 fires_category <- fires_raw %>%
   select(-day) %>%
   mutate(area = case_when(area>0~1,area==0~0)) %>%
-  mutate(area = as.factor(area)) #%>%
-  #mutate(season = case_when(month=="dec"||month=="jan"||month=="feb"~"winter",
-                            #month=="mar"||month=="apr"||month=="may"~"spring",
-                            #month=="june"||month=="jul"||month=="aug"~"summer",
-                            #month=="sep"||month=="oct"||month=="nov"~"fall"))
+  mutate(area = as.factor(area)) %>%
+  mutate(X = factor(X), Y = factor(Y)) %>%
+  mutate(geoGrids = factor(paste0(X,'-',Y))) %>%
+  mutate(season = case_when(month=="dec"|month=="jan"|month=="feb"~"winter",
+                            month=="mar"|month=="apr"|month=="may"~"spring",
+                            month=="jun"|month=="jul"|month=="aug"~"summer",
+                            month=="sep"|month=="oct"|month=="nov"~"fall"))
 ```
 
 LOGISTIC REGRESSION:
@@ -351,7 +414,12 @@ logistic_spec <- logistic_reg() %>%
     set_mode('classification')
 
 # recipe
-logistic_rec <- recipe(area ~ temp + RH + DMC + X + DC + Y + FFMC, data = fires_category)
+logistic_rec <- recipe(area ~ ., data = fires_category) %>%
+    step_rm(month,X,Y,rain,wind,temp,RH) %>%
+    step_nzv(all_predictors()) %>% # removes variables with the same value
+    #step_novel(all_nominal_predictors()) %>%
+    #step_normalize(all_numeric_predictors()) %>% # important standardization step for LASSO
+    step_dummy(all_nominal_predictors())  # creates indicator variables for categorical variables
 
 # workflow: rec + model
 log_wf <- workflow() %>% 
@@ -371,7 +439,7 @@ log_fit %>% tidy() %>%
   mutate(OR = exp(estimate))
 ```
 Larger the OR value the higher the chance there is a fire.
-Originally, we included month which showed that the categorical variable December month indicates a high chance of a fire while January and November indicate a very low chance of a fire. This was because of a lack of data: there were 9 "true" cases for fires in December and 0 "false" cases. This caused the  standard errors of these months to be very high, indicating that month is a bad predictor for logistic regression despite being an effective predictor with the trees method. In the current data we remove month from our model.
+Originally, we included month which showed that the categorical variable December month indicates a high chance of a fire while January and November indicate a very low chance of a fire. This was because of a lack of data: there were 9 "true" cases for fires in December and 0 "false" cases. This caused the  standard errors of these months to be very high, indicating that month is a bad predictor for logistic regression despite being an effective predictor with the trees method. In the current adata we remove month from our model.
 
 This data shows that temp, RH, DMC, X, Y, DC, and FFMC are all relatively similar at predicting whether there was a fire or not. 
 
@@ -394,7 +462,7 @@ data_wf_tune <- workflow() %>%
   add_model(ct_spec_tune) %>%
   add_recipe(data_rec)
 
-param_grid <- grid_regular(cost_complexity(range = c(-5, 2)), levels = 10) 
+param_grid <- grid_regular(cost_complexity(range = c(-5, 2)), levels = 20) 
 
 tune_res <- tune_grid(
   data_wf_tune, 
@@ -409,7 +477,7 @@ autoplot(tune_res) + theme_classic()
 ```
 
 ```{r}
-best_complexity <- select_by_one_std_err(tune_res, metric = 'accuracy', desc(cost_complexity))
+best_complexity <- select_best(tune_res, metric = 'accuracy', desc(cost_complexity))
 data_wf_final <- finalize_workflow(data_wf_tune, best_complexity)
 
 land_final_fit <- fit(data_wf_final, data = fires_category)
@@ -421,7 +489,7 @@ tune_res %>%
 ```
 
 ```{r}
-par(mfrow = c(1,3))
+
 land_final_fit %>% extract_fit_engine() %>% rpart.plot()
 ```
 ```{r}
@@ -447,81 +515,43 @@ data_rec <- recipe(area ~ ., data = fires_category)
 
 ```{r}
 # Workflows
-data_wf_mtry2 <- workflow() %>%
-  add_model(rf_spec %>% set_args(mtry = 2)) %>%
-  add_recipe(data_rec)
-
-data_wf_mtry10 <- workflow() %>%
-  add_model(rf_spec %>% set_args(mtry = 10)) %>%
-  add_recipe(data_rec)
-
-## Create workflows for mtry = 12, 74, and 147
-
-data_wf_mtry12 <- workflow() %>%
-  add_model(rf_spec %>% set_args(mtry = 12)) %>%
-  add_recipe(data_rec)
-
-data_wf_mtry6 <- workflow() %>%
-  add_model(rf_spec %>% set_args(mtry = 6)) %>%
+data_wf_rf <- workflow() %>%
+  add_model(rf_spec) %>%
   add_recipe(data_rec)
 ```
 
 ```{r}
 # Fit Models
 set.seed(123) # make sure to run this before each fit so that you have the same 1000 trees
-data_fit_mtry2 <- fit(data_wf_mtry2, data = fires_category)
+data_fit_rf <- fit(data_wf_rf , data = fires_category)
 
-# Fit models for 12
-set.seed(123) 
-data_fit_mtry12 <- fit(data_wf_mtry12, data = fires_category)
 
-set.seed(123) 
-data_fit_mtry10 <- fit(data_wf_mtry10, data = fires_category)
-
-set.seed(123) 
-data_fit_mtry6 <- fit(data_wf_mtry6, data = fires_category)
 ```
 
-```{r}
-# Custom Function to get OOB predictions, true observed outcomes and add a user-provided model label
-rf_OOB_output <- function(fit_model, model_label, truth){
-    tibble(
-          .pred_class = fit_model %>% extract_fit_engine() %>% pluck('predictions'), #OOB predictions
-          area = truth,
-          label = model_label
-      )
-}
-```
+
 
 ```{r}
 # Evaluate OOB Metrics
 
-data_rf_OOB_output <- bind_rows(
-    rf_OOB_output(data_fit_mtry2,2, fires_category %>% pull(area)),
-    rf_OOB_output(data_fit_mtry12,12, fires_category %>% pull(area)),
-    rf_OOB_output(data_fit_mtry10,10, fires_category %>% pull(area)),
-    rf_OOB_output(data_fit_mtry6,6, fires_category %>% pull(area))
-)
+data_rf_OOB_output <- tibble(
+          .pred_class = data_fit_rf %>% extract_fit_engine() %>% pluck('predictions'), #OOB predictions
+          area = fires_category %>% pull(area)
+      )
 
-data_rf_OOB_output = data_rf_OOB_output %>% 
-    group_by(label) %>%
+data_rf_OOB_output %>% 
     accuracy(truth = area, estimate = .pred_class)
 ```
 
+
 ```{r}
-ggplot(data=data_rf_OOB_output, aes(y=.estimate,x=label)) +
-    geom_point() +
-    theme_classic()
+data_fit_rf
 ```
 ```{r}
-data_fit_mtry12
-```
-```{r}
-rf_OOB_output(data_fit_mtry12,12, fires_category %>% pull(area)) %>%
+data_rf_OOB_output %>%
     conf_mat(truth = area, estimate= .pred_class)
 ```
 ```{r}
-model_output2 <- data_wf_mtry12 %>% 
+model_output2 <- data_wf_rf %>% 
   update_model(rf_spec %>% set_args(importance = "permutation")) %>% #based on permutation
   fit(data = fires_category) %>% 
     extract_fit_engine() 
