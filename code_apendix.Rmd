@@ -1,5 +1,5 @@
-```{r hw2_setup, include=FALSE}
-knitr::opts_chunk$set(echo=TRUE, eval=TRUE)
+```{r code_apendix, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, tidy = TRUE)
 ```
 
 ### Code Apendix {-}
@@ -492,7 +492,7 @@ model_output2 %>% vip::vi() %>% tail()
 
 ```{r}
 fires_sub <- fires %>%
-    select(temp, RH, DMC, X, DC, Y, FFMC)
+    select(-month,-X,-Y,-rain,-wind,-temp,-RH, -season, -geoGrids)
 
 dist_mat_scaled <- dist(scale(fires_sub))
 

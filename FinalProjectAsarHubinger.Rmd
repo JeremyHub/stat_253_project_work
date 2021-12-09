@@ -1,9 +1,0 @@
----
-title: "FinalProjectAsarHubinger"
-output: html_document
----
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, tidy = TRUE)
-```
-
