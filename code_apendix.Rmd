@@ -20,8 +20,6 @@ tidymodels_prefer()
 fires_raw <- read_csv("forestfires.csv")
 ```
 
-The dataset has a variety of variables that might impact the strength and likelihood of fires. These variables include mainly things about weather, like temperature, pressure, wind, rain, ect. The variable we are trying to predict is "area" which is the area burned by fires on that day.
-
 ```{r}
 # data cleaning
 fires <- fires_raw %>%
