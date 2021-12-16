@@ -506,7 +506,7 @@ plot(hc_complete)
 ```{r}
 fires <- fires %>%
     mutate(
-        hclust_height = factor(cutree(hc_complete, h = 5)), # Cut at height (h) 3
+        hclust_height = factor(cutree(hc_complete, h = 4.5)), # Cut at height (h) 3
         hclust_num6 = factor(cutree(hc_complete, k = 6)), # Cut into 6 clusters (k)
         temp_factor = if(temp>25) 25 else 0,
         temp_factor = if(temp_factor==0) (if(temp>10) 10 else 0) else temp_factor,
@@ -514,6 +514,21 @@ fires <- fires %>%
     )
 
 ggplot(fires, aes(x = hclust_height, y = area)) +
+    geom_boxplot() +
+    facet_wrap(vars(factor(temp_factor))) +
+    theme_classic()
+
+ggplot(fires, aes(x = hclust_height, y = DMC)) +
+    geom_boxplot() +
+    facet_wrap(vars(factor(temp_factor))) +
+    theme_classic()
+
+ggplot(fires, aes(x = hclust_height, y = temp)) +
+    geom_boxplot() +
+    facet_wrap(vars(factor(temp_factor))) +
+    theme_classic()
+
+ggplot(fires, aes(x = hclust_height, y = geoGrids)) +
     geom_boxplot() +
     facet_wrap(vars(factor(temp_factor))) +
     theme_classic()
